@@ -162,3 +162,7 @@ venv.bak/
 *.cubin
 *.fatbin
 
+assets/*
+test/*
+model/*
+

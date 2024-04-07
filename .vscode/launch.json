@@ -31,13 +31,60 @@
                 "--model_type",
                 "smplx",
                 "--param_fn",
-                "/usr/pydata/t2m/selfcontact/selfcontact-essentials/example_poses/pose1.npz",
+                // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/example_poses/pose1.npz",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",
                 // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hand_on_body_prior/smplx/smplx_handonbody_prior.pkl"
                 // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hd_model/smplx/smplx_neutral_hd_sample_from_mesh_out.pkl"
                 // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/models_utils/smpl_to_smplx.pkl"
                 // "--print_timings",
                 // "True"
             ]
+        },
+        {
+            "name": "Anim Optimization",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/anim_optimization.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--coll_loss_weight",
+                "0.003",
+                // "--optim",
+                // "Adam",
+                // "--lr",
+                // "0.008", // 1 for SGD
+                "--assign_frame_idx", // 仅优化某一帧
+                "47",
+                "--model_folder",
+                "/usr/pydata/t2m/selfcontact/model/models",
+                "--part_segm_fn", // 面索引对应的身体部位&父骨骼身体部位，用于过滤
+                "model/smplx_parts_segm.pkl",
+                "--model_type",
+                "smplx",
+                "--param_fn",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz"
+            ]
+        },
+        {
+            "name": "Read fbx File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test/202021/fbx202037_fbxpythonbindings_linux/samples/ImportScene/ImportScene.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/usr/pydata/t2m/torch-mesh-isect/assets/fbx_file/motion_fix_assets/raw_motion_mabaoguo.fbx"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Python Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+            ],
+            "justMyCode": false
         }
     ]
 }
