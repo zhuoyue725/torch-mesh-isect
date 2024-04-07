@@ -47,6 +47,8 @@ Before installing anything please make sure to set the environment variable
 can be found in the repo [CUDA Samples repository](https://github.com/NVIDIA/cuda-samples).
 To install the module run the following commands:  
 
+os.environ.get('CUDA_SAMPLES_INC')发现获取不到，但是可以直接echo得到
+
 **1. Clone this repository**
 ```Shell
 git clone https://github.com/vchoutas/torch-mesh-isect
@@ -54,11 +56,20 @@ cd torch-mesh-isect
 ```
 **2. Install the dependencies**
 ```Shell
+conda create -n meshisect python=3.7.12
 pip install -r requirements.txt 
 ```
 **3. Run the *setup.py* script**
 ```Shell
 python setup.py install
+
+TORCH_CUDA_ARCH_LIST="6.1" python setup_bvh.py install
+
+CUDA_SAMPLE_INC="/usr/mycpp/cuda-samples/Common" TORCH_CUDA_ARCH_LIST="6.1" python setup_bvh.py install
+
+\usr\mycpp\cuda\cu-116\cuda-samples\Common
+
+link[https://github.com/muelea/shapy/issues/36]
 ```
 
 ## Examples

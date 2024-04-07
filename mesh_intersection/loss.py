@@ -137,11 +137,13 @@ def conical_distance_field(triangle_points, cone_center, cone_radius,
             - cone_axis (torch.tensor(BxCx3)): The unit vector that represents
               the axis of the cone
         Keyword Arguments
-            - sigma (float = 0.5): The float value of the height of the cone
-            - vectorized (bool = True): Whether to use an iterative or a
+            - sigma (float = 0.5): The float value of the height of the cone 圆锥体高度
+            - vectorized (bool = True): Whether to use an iterative or a 迭代版本or矢量版本？
               vectorized version of the function
+            - penalize_outside: ？
+            - linear_max: ？
         Returns:
-            - (torch.tensor BxCxN): The distance field values at the N points
+            - (torch.tensor BxCxN): The distance field values at the N points 
               for the cone
     '''
 
@@ -211,27 +213,31 @@ class DistanceFieldPenetrationLoss(nn.Module):
     def forward(self, triangles, collision_idxs):
         '''
         Args:
-            - triangles: A torch tensor of size BxFx3x3 that contains the
+            - triangles: A torch tensor of size BxFx3x3 that contains the 
                 coordinates of the triangle vertices
+                (1, 20908, 3, 3)
             - collision_idxs: A torch tensor of size Bx(-1)x2 that contains the
               indices of the colliding pairs
+              (1,167264,2) 可能有的顶点重复碰撞？
+              顶点索引 or 面索引？
+              大部分是-1，如(-1,-1)
         Returns:
             A tensor with size B that contains the self penetration loss for
             each mesh in the batch
         '''
 
-        coll_idxs = collision_idxs[:, :, 0].ge(0).nonzero()
+        coll_idxs = collision_idxs[:, :, 0].ge(0).nonzero() # 有效碰撞对在collision_idxs中的索引，注意这里是二维数组，即行数为非0个数，第二维度是(bs_idx, f_idx)
         if len(coll_idxs) < 1:
             return torch.zeros([triangles.shape[0]],
                                dtype=triangles.dtype,
                                device=triangles.device,
                                requires_grad=triangles.requires_grad)
 
-        receiver_faces = collision_idxs[coll_idxs[:, 0], coll_idxs[:, 1], 0]
-        intruder_faces = collision_idxs[coll_idxs[:, 0], coll_idxs[:, 1], 1]
+        receiver_faces = collision_idxs[coll_idxs[:, 0], coll_idxs[:, 1], 0] # 获取pair第1个面的面索引，接收者
+        intruder_faces = collision_idxs[coll_idxs[:, 0], coll_idxs[:, 1], 1] # 获取pair第2个面的面索引，入侵者
 
-        batch_idxs = coll_idxs[:, 0]
-        num_collisions = coll_idxs.shape[0]
+        batch_idxs = coll_idxs[:, 0] # batch索引，即第几个mesh？
+        num_collisions = coll_idxs.shape[0] # 碰撞点数量
 
         batch_size = triangles.shape[0]
 
@@ -239,21 +245,21 @@ class DistanceFieldPenetrationLoss(nn.Module):
             return torch.tensor(0.0, dtype=triangles.dtype,
                                 device=triangles.device,
                                 requires_grad=triangles.requires_grad)
-        # Calculate the edges of the triangles
+        # Calculate the edges of the triangles，是否需要每个面都计算？or仅计算在receiver_faces or intruder_faces中的？
         # Size: BxFx3
         edge0 = triangles[:, :, 1] - triangles[:, :, 0]
         edge1 = triangles[:, :, 2] - triangles[:, :, 0]
         # Compute the cross product of the edges to find the normal vector of
-        # the triangle
+        # the triangle 通过叉乘计算面的法向量
         aCrossb = torch.cross(edge0, edge1, dim=2)
 
-        circumradius, circumcenter = calc_circumcircle(triangles, aCrossb)
+        circumradius, circumcenter = calc_circumcircle(triangles, aCrossb) # 外接圆半径 and 外接圆圆心
 
-        # Normalize the result to get a unit vector
+        # Normalize the result to get a unit vector 法向量归一化
         normals = aCrossb / torch.norm(aCrossb, 2, dim=2, keepdim=True)
 
-        recv_triangles = triangles[batch_idxs, receiver_faces]
-        intr_triangles = triangles[batch_idxs, intruder_faces]
+        recv_triangles = triangles[batch_idxs, receiver_faces] # 获取pair第1个面的顶点，接收者 (NUM_COLLISIONS, 3, 3)
+        intr_triangles = triangles[batch_idxs, intruder_faces]  # 获取pair第2个面的顶点，入侵者 (NUM_COLLISIONS, 3, 3)
         
         recv_normals = normals[batch_idxs, receiver_faces]
         recv_circumradius = circumradius[batch_idxs, receiver_faces]
@@ -263,12 +269,12 @@ class DistanceFieldPenetrationLoss(nn.Module):
         intr_circumradius = circumradius[batch_idxs, intruder_faces]
         intr_circumcenter = circumcenter[batch_idxs, intruder_faces]
 
-        # Compute the distance field for the intruding triangles
+        # Compute the distance field for the intruding triangles # 计算接收者三角形的距离场中，入侵者的值
         # B x NUM_COLLISIONS x 3
         # For each batch element, for each collision pair, 3 distance values
         # for the vertices of the intruding triangle
-        phi_receivers = conical_distance_field(
-            intr_triangles,
+        phi_receivers = conical_distance_field( 
+            intr_triangles, # 入侵者三角形的三个顶点
             recv_circumcenter, recv_circumradius,
             recv_normals,
             sigma=self.sigma,
@@ -276,12 +282,12 @@ class DistanceFieldPenetrationLoss(nn.Module):
             penalize_outside=self.penalize_outside,
             linear_max=self.linear_max)
 
-        # Compute the distance field for the intruding triangles
+        # Compute the distance field for the intruding triangles # 计算入侵者三角形的距离场中，接收者的值
         # B x NUM_COLLISIONS x 3
         # For each batch element, for each collision pair, 3 distance values
         # for the vertices of the intruding triangle
         # Same as above, but now the receiver is the "intruder".
-        phi_intruders = conical_distance_field(
+        phi_intruders = conical_distance_field( # (NUM_COLLISIONS, 3) 每个顶点在距离场的值
             recv_triangles,
             intr_circumcenter,
             intr_circumradius,
@@ -297,18 +303,19 @@ class DistanceFieldPenetrationLoss(nn.Module):
                                      dtype=torch.float32)
 
         if self.point2plane:
-            receiver_loss = (-phi_receivers).pow(2).sum(dim=-1)
+            receiver_loss = (-phi_receivers).pow(2).sum(dim=-1) # 平方和，为什么不是平方和开方？为什么负数？
             intruder_loss = (-phi_intruders).pow(2).sum(dim=-1)
-        else:
-            receiver_loss = torch.norm(-phi_receivers.unsqueeze(dim=-1) *
-                                       intr_normals.unsqueeze(dim=-2), p=2,
-                                       dim=-1).pow(2).sum(dim=-1)
+        else: # 距离值 依次乘以 法线方向
+            receiver_loss = torch.norm(-phi_receivers.unsqueeze(dim=-1) * # (N , 3, 1)
+                                       intr_normals.unsqueeze(dim=-2), p=2,             # (N , 1, 3)
+                                       dim=-1).pow(2).sum(dim=-1)                           # (N , 3)
             intruder_loss = torch.norm(-phi_intruders.unsqueeze(dim=-1) *
                                        recv_normals.unsqueeze(dim=-2), p=2,
                                        dim=-1).pow(2).sum(dim=-1)
 
         batch_ind = torch.arange(0, batch_size, dtype=batch_idxs.dtype,
                                  device=triangles.device).unsqueeze(dim=1)
+        # 为什么还另外创建一个mask？直接求和不也一样？
         batch_mask = batch_ind.repeat([1, num_collisions]).eq(batch_idxs)\
             .to(receiver_loss.dtype)
 

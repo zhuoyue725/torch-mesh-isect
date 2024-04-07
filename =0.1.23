@@ -1,0 +1,23 @@
+Collecting pyrender
+  Using cached pyrender-0.1.45-py3-none-any.whl (1.2 MB)
+Collecting PyOpenGL==3.1.0
+  Using cached PyOpenGL-3.1.0-py3-none-any.whl
+Requirement already satisfied: trimesh in /home/zhuoyue/anaconda3/envs/selfcontact/lib/python3.7/site-packages (from pyrender) (4.2.4)
+Collecting freetype-py
+  Downloading freetype_py-2.4.0-py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl (1.0 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.0/1.0 MB 2.3 MB/s eta 0:00:00
+Requirement already satisfied: numpy in /home/zhuoyue/anaconda3/envs/selfcontact/lib/python3.7/site-packages (from pyrender) (1.21.6)
+Collecting pyglet>=1.4.10
+  Downloading pyglet-2.0.10-py3-none-any.whl (858 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 858.3/858.3 kB 5.3 MB/s eta 0:00:00
+Collecting imageio
+  Downloading imageio-2.31.2-py3-none-any.whl (313 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 313.2/313.2 kB 3.4 MB/s eta 0:00:00
+Collecting scipy
+  Using cached scipy-1.7.3-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl (38.1 MB)
+Requirement already satisfied: Pillow in /home/zhuoyue/anaconda3/envs/selfcontact/lib/python3.7/site-packages (from pyrender) (9.5.0)
+Collecting networkx
+  Using cached networkx-2.6.3-py3-none-any.whl (1.9 MB)
+Requirement already satisfied: six in /home/zhuoyue/anaconda3/envs/selfcontact/lib/python3.7/site-packages (from pyrender) (1.16.0)
+Installing collected packages: PyOpenGL, pyglet, scipy, networkx, imageio, freetype-py, pyrender
+Successfully installed PyOpenGL-3.1.0 freetype-py-2.4.0 imageio-2.31.2 networkx-2.6.3 pyglet-2.0.10 pyrender-0.1.45 scipy-1.7.3

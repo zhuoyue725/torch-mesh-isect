@@ -32,6 +32,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+sys.path.append('/usr/pydata/t2m/torch-mesh-isect')
 from mesh_intersection.filter_faces import FilterFaces
 from mesh_intersection.bvh_search_tree import BVH
 import mesh_intersection.loss as collisions_loss
@@ -116,39 +117,51 @@ def main():
 
     params_dict = defaultdict(lambda: [])
     for idx, fn in enumerate(param_fn):
-        with open(fn, 'rb') as param_file:
-            data = pickle.load(param_file, encoding='latin1')
+        # with open(fn, 'rb') as param_file:
+            # data = pickle.load(param_file, encoding='latin1')
+        data = np.load(fn)
 
-        assert 'betas' in data, \
-            'No key for shape parameter in provided pickle file'
-        assert 'global_pose' in data, \
-            'No key for the global pose in the given pickle file'
-        assert 'pose' in data, \
-            'No key for the pose of the joints in the given pickle file'
+        # assert 'betas' in data, \
+        #     'No key for shape parameter in provided pickle file'
+        # assert 'global_pose' in data, \
+        #     'No key for the global pose in the given pickle file'
+        # assert 'pose' in data, \
+        #     'No key for the pose of the joints in the given pickle file'
 
         for key, val in data.items():
             params_dict[key].append(val)
 
     params = {}
     for key in params_dict:
-        params[key] = np.stack(params_dict[key], axis=0).astype(np.float32)
-        if len(params[key].shape) < 2:
-            params[key] = params[key][np.newaxis]
+        if(key!='gender' and key!='model'):
+            params[key] = params_dict[key] #np.stack(params_dict[key], axis=0).astype(np.float32)
+            if(key=='body_pose'):
+                params[key] = params_dict[key][0][3:66] # np.stack(params_dict[key][3:66], axis=0).astype(np.float32)
+            # if len(params[key].shape) < 2:
+            #     params[key] = params[key][np.newaxis]
     if 'global_pose' in params:
         params['global_orient'] = params['global_pose']
-    if 'pose' in params:
+    if 'pose' in params: # 
         params['body_pose'] = params['pose']
+    # if 'body_pose' in params: # body_pose
+    #     params['body_pose'] = params['body_pose'][3:66]
 
     if part_segm_fn:
         # Read the part segmentation
         with open(part_segm_fn, 'rb') as faces_parents_file:
             data = pickle.load(faces_parents_file, encoding='latin1')
-        faces_segm = data['segm']
-        faces_parents = data['parents']
+        faces_segm = data['segm'] # (20908, ) 每个面对应的身体部位，0到54，共55个部位
+        faces_parents = data['parents'] # (20908, ) 每个面对应的身体部位的父部位
         # Create the module used to filter invalid collision pairs
-        filter_faces = FilterFaces(faces_segm, faces_parents).to(device=device)
+        ign_part_pairs = ['16,9','9,17' #,'13,16','14,17' ,'18,16','19,17'
+                          ,'15,23','15,24'] 
+        # 9上胸；13左肩，16左上臂，18 左小臂；14右肩，17右上臂，19 右小臂
+        # 12颈部，15头部，23左眼，24右眼
+        filter_faces = FilterFaces(faces_parents = faces_parents,
+                                   faces_segm = faces_segm,
+                                   ign_part_pairs = ign_part_pairs).to(device=device) # 源代码中这里parents和segm反了
 
-    # Create the body model
+    # Create the body model smplx基准模型
     body = create(model_folder, batch_size=batch_size,
                   model_type=model_type).to(device=device)
     body.reset_params(**params)
@@ -157,7 +170,7 @@ def main():
     init_pose = body.body_pose.clone().detach()
 
     # Create the search tree
-    search_tree = BVH(max_collisions=max_collisions)
+    search_tree = BVH(max_collisions=max_collisions) # 仅构建一次而没有更新？
 
     pen_distance = \
         collisions_loss.DistanceFieldPenetrationLoss(sigma=sigma,
@@ -168,7 +181,7 @@ def main():
 
     face_tensor = torch.tensor(body.faces.astype(np.int64), dtype=torch.long,
                                device=device).unsqueeze_(0).repeat([batch_size,
-                                                                    1, 1])
+                                                                    1, 1]) # (1, 20908, 3)
     with torch.no_grad():
         output = body(get_skin=True)
         verts = output.vertices
@@ -176,9 +189,9 @@ def main():
     bs, nv = verts.shape[:2]
     bs, nf = face_tensor.shape[:2]
     faces_idx = face_tensor + \
-        (torch.arange(bs, dtype=torch.long).to(device) * nv)[:, None, None]
+        (torch.arange(bs, dtype=torch.long).to(device) * nv)[:, None, None] # 为什么要+bs？
 
-    optimizer = torch.optim.SGD([body.body_pose], lr=lr)
+    optimizer = torch.optim.SGD([body.body_pose], lr=lr) # 随机梯度下降
 
     if interactive:
         # Plot the initial mesh
@@ -235,7 +248,7 @@ def main():
         if print_timings:
             torch.cuda.synchronize()
         output = body(get_skin=True)
-        verts = output.vertices
+        verts = output.vertices #  (1, 10475, 3)
 
         if print_timings:
             torch.cuda.synchronize()
@@ -244,7 +257,7 @@ def main():
         if print_timings:
             torch.cuda.synchronize()
             start = time.time()
-        triangles = verts.view([-1, 3])[faces_idx]
+        triangles = verts.view([-1, 3])[faces_idx] # triangles及三角形位置 (1, 20908, 3, 3)
         if print_timings:
             torch.cuda.synchronize()
             print('Triangle indexing: {:5f}'.format(time.time() - start))
@@ -252,7 +265,7 @@ def main():
         with torch.no_grad():
             if print_timings:
                 start = time.time()
-            collision_idxs = search_tree(triangles)
+            collision_idxs = search_tree(triangles) # 通过BVH检测碰撞，碰撞顶点对 (1,167264,2)，为什么16万个碰撞？
             if print_timings:
                 torch.cuda.synchronize()
                 print('Collision Detection: {:5f}'.format(time.time() -
@@ -260,7 +273,7 @@ def main():
             if part_segm_fn:
                 if print_timings:
                     start = time.time()
-                collision_idxs = filter_faces(collision_idxs)
+                collision_idxs = filter_faces(collision_idxs) # 过滤部分碰撞
                 if print_timings:
                     torch.cuda.synchronize()
                     print('Collision filtering: {:5f}'.format(time.time() -
@@ -269,7 +282,7 @@ def main():
         if print_timings:
             start = time.time()
         pen_loss = coll_loss_weight * \
-            pen_distance(triangles, collision_idxs)
+            pen_distance(triangles, collision_idxs) # 计算穿模损失，输入三角形及顶点位置、碰撞顶点对
         if print_timings:
             torch.cuda.synchronize()
             print('Penetration loss: {:5f}'.format(time.time() - start))
@@ -284,7 +297,7 @@ def main():
             pose_reg_loss = pose_reg_weight * \
                 mse_loss(body.pose, init_pose)
 
-        loss = pen_loss + pose_reg_loss + shape_reg_loss
+        loss = pen_loss + pose_reg_loss + shape_reg_loss # 添加contact loss？
 
         np_loss = loss.detach().cpu().squeeze().tolist()
         if type(np_loss) != list:
@@ -319,7 +332,7 @@ def main():
                     scene.remove_node(node)
 
             for bidx in range(batch_size):
-                recv_faces_idxs = np_receivers[bidx][np_receivers[bidx] >= 0]
+                recv_faces_idxs = np_receivers[bidx][np_receivers[bidx] >= 0] # 接收者三角形面索引
                 intr_faces_idxs = np_intruders[bidx][np_intruders[bidx] >= 0]
                 recv_faces = body.faces[recv_faces_idxs]
                 intr_faces = body.faces[intr_faces_idxs]
@@ -336,17 +349,46 @@ def main():
                           pose=pose)
 
                 if len(intr_faces) > 0:
-                    intr_mesh = create_mesh(curr_verts, intr_faces,
-                                            color=(0.9, 0.0, 0.0, 1.0))
+                    intr_mesh = create_mesh(curr_verts, intr_faces, # 穿模三角形（入侵者）的颜色
+                                            color=(0.9, 0.0, 0.0, 1.0)) # 红色
                     scene.add(intr_mesh,
                               name='intr_mesh_{:03d}'.format(bidx),
                               pose=pose)
 
                 if len(recv_faces) > 0:
-                    recv_mesh = create_mesh(curr_verts, recv_faces,
+                    recv_mesh = create_mesh(curr_verts, recv_faces, # 被穿模三角形（接收者）的颜色
                                             color=(0.0, 0.9, 0.0, 1.0))
                     scene.add(recv_mesh, name='recv_mesh_{:03d}'.format(bidx),
                               pose=pose)
+                
+                # 测试一个三角形
+                # test_faces = body.faces[[4882]]
+                # test_mesh = create_mesh(curr_verts, test_faces, # 被穿模三角形（接收者）的颜色
+                #                             color=(0.9, 0.0, 0.0, 1.0))
+                # scene.add(test_mesh, name='test_mesh_{:03d}'.format(bidx),
+                #               pose=pose)
+                
+                # 显示特定身体部位的面              
+                # idx = 16  # 16
+                # print(idx)
+                # mask = faces_segm == idx
+                # # mask = np.isin(faces_segm, idx_list)
+                # segm_faces = body.faces[mask, :]
+                # segm_mesh = create_mesh(curr_verts, segm_faces, # 被穿模三角形（接收者）的颜色
+                #                             color=(0.0, 0.0, 0.9, 1.0))
+                # scene.add(segm_mesh, name='segm_mesh_{:03d}'.format(bidx),
+                #               pose=pose)
+                
+                # idx = faces_parents[4882]  # 16
+                # print(idx)
+                # mask = faces_segm == idx
+                # # mask = np.isin(faces_segm, idx_list)
+                # segm_faces = body.faces[mask, :]
+                # segm_mesh = create_mesh(curr_verts, segm_faces, # 被穿模三角形（接收者）的颜色
+                #                             color=(0.0, 0.9, 0.9, 1.0))
+                # scene.add(segm_mesh, name='segm_parent_mesh_{:03d}'.format(bidx),
+                #               pose=pose)
+                    
             viewer.render_lock.release()
 
             if not viewer.is_active:

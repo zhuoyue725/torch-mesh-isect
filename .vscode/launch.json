@@ -1,0 +1,43 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Collision Detection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/detect_and_plot_collisions.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/usr/pydata/t2m/selfcontact/output/heavy_lifting.obj"
+            ]
+        },
+        {
+            "name": "Batch Collision resolution",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/batch_smpl_untangle.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--coll_loss_weight",
+                "0.003",
+                "--model_folder",
+                "/usr/pydata/t2m/selfcontact/model/models",
+                "--part_segm_fn", // 面索引对应的身体部位&父骨骼身体部位，用于过滤
+                "model/smplx_parts_segm.pkl",
+                // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/segments/smplx/smplx_segment_left_arm.ply",
+                "--model_type",
+                "smplx",
+                "--param_fn",
+                "/usr/pydata/t2m/selfcontact/selfcontact-essentials/example_poses/pose1.npz",
+                // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hand_on_body_prior/smplx/smplx_handonbody_prior.pkl"
+                // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hd_model/smplx/smplx_neutral_hd_sample_from_mesh_out.pkl"
+                // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/models_utils/smpl_to_smplx.pkl"
+                // "--print_timings",
+                // "True"
+            ]
+        }
+    ]
+}

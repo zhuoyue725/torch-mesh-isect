@@ -41,9 +41,14 @@ import numpy as np
 import tqdm
 
 import trimesh
-import pyrender
+import pyrender # 0.1.45
+# pyglet 2.0.10 requires Python 3.8 or newer
+# 1.5.28、1.5.0
+import sys
+sys.path.append('/usr/pydata/t2m/torch-mesh-isect')
 from mesh_intersection.bvh_search_tree import BVH
-
+# No module named 'mesh_intersection'
+# export CUDA_SAMPLES_INC=/usr/mycpp/cuda-samples/Common
 
 if __name__ == "__main__":
 
@@ -121,4 +126,4 @@ if __name__ == "__main__":
     scene.add(recv_mesh)
     scene.add(intr_mesh)
 
-    pyrender.Viewer(scene, use_raymond_lighting=True, cull_faces=False)
+    pyrender.Viewer(scene, use_raymond_lighting=True, cull_faces=False) # Could not create GL context 

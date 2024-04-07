@@ -27,7 +27,7 @@ import torch.autograd as autograd
 
 import bvh_cuda
 
-
+    
 class BVHFunction(autograd.Function):
 
     max_collisions = 8
