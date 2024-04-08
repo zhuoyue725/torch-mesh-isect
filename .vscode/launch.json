@@ -49,12 +49,12 @@
             "args": [
                 "--coll_loss_weight",
                 "0.003",
-                "--optim",
-                "Adam",
-                "--lr",
-                "0.001", // 1 for SGD
+                // "--optim",
+                // "Adam",
+                // "--lr",
+                // "0.005", // 1 for SGD
                 // "--assign_frame_idx", // 仅优化某一帧，否则全部优化
-                // "100",
+                // "47",
                 "--model_folder",
                 "/usr/pydata/t2m/selfcontact/model/models",
                 "--part_segm_fn", // 面索引对应的身体部位&父骨骼身体部位，用于过滤
@@ -62,7 +62,7 @@
                 "--model_type",
                 "smplx",
                 "--param_fn",
-                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/result_no_smooth_5.npz",
                 "--output_folder",
                 "/usr/pydata/t2m/torch-mesh-isect/output",
                 "--print_timings",
