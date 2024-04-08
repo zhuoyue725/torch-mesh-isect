@@ -119,7 +119,8 @@ def main():
     for idx, fn in enumerate(param_fn):
         # with open(fn, 'rb') as param_file:
             # data = pickle.load(param_file, encoding='latin1')
-        data = np.load(fn)
+        # data = np.load(fn)
+        data = np.load(param_fn[0], allow_pickle=True)
 
         # assert 'betas' in data, \
         #     'No key for shape parameter in provided pickle file'
@@ -135,8 +136,10 @@ def main():
     for key in params_dict:
         if(key!='gender' and key!='model'):
             params[key] = params_dict[key] #np.stack(params_dict[key], axis=0).astype(np.float32)
-            if(key=='body_pose'):
-                params[key] = params_dict[key][0][3:66] # np.stack(params_dict[key][3:66], axis=0).astype(np.float32) 原先有87个，前三个
+            if(key=='poses'):
+                params['body_pose'] = params_dict['poses'][0][47][3:66] 
+            # if(key=='body_pose'):
+            #     params[key] = params_dict[key][0][3:66] # np.stack(params_dict[key][3:66], axis=0).astype(np.float32) 原先有87个，前三个
             # if len(params[key].shape) < 2:
             #     params[key] = params[key][np.newaxis]
     if 'global_pose' in params:
@@ -194,6 +197,7 @@ def main():
 
     optimizer = torch.optim.SGD([body.body_pose], lr=lr) # 随机梯度下降，使用其他优化器？
 
+    # pyrender渲染相关初始化
     if interactive:
         # Plot the initial mesh
         with torch.no_grad():
@@ -239,6 +243,7 @@ def main():
 
     query_names = ['recv_mesh', 'intr_mesh', 'body_mesh']
 
+    # 优化迭代
     step = 0
     while True:
         optimizer.zero_grad()
@@ -266,7 +271,7 @@ def main():
         with torch.no_grad():
             if print_timings:
                 start = time.time()
-            collision_idxs = search_tree(triangles) # 通过BVH检测碰撞，碰撞顶点对 (1,167264,2)，为什么16万个碰撞？
+            collision_idxs = search_tree(triangles) # 0.01秒左右 通过BVH检测碰撞，碰撞顶点对 (1,167264,2)，为什么16万个碰撞？
             if print_timings:
                 torch.cuda.synchronize()
                 print('Collision Detection: {:5f}'.format(time.time() -

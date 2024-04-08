@@ -119,8 +119,7 @@ def main():
     for idx, fn in enumerate(param_fn):
         # with open(fn, 'rb') as param_file:
             # data = pickle.load(param_file, encoding='latin1')
-        # data = np.load(fn)
-        data = np.load(param_fn[0], allow_pickle=True)
+        data = np.load(fn)
 
         # assert 'betas' in data, \
         #     'No key for shape parameter in provided pickle file'
@@ -136,10 +135,8 @@ def main():
     for key in params_dict:
         if(key!='gender' and key!='model'):
             params[key] = params_dict[key] #np.stack(params_dict[key], axis=0).astype(np.float32)
-            if(key=='poses'):
-                params['body_pose'] = params_dict['poses'][0][47][3:66] 
-            # if(key=='body_pose'):
-            #     params[key] = params_dict[key][0][3:66] # np.stack(params_dict[key][3:66], axis=0).astype(np.float32) 原先有87个，前三个
+            if(key=='body_pose'):
+                params[key] = params_dict[key][0][3:66] # np.stack(params_dict[key][3:66], axis=0).astype(np.float32) 原先有87个，前三个
             # if len(params[key].shape) < 2:
             #     params[key] = params[key][np.newaxis]
     if 'global_pose' in params:
@@ -157,7 +154,8 @@ def main():
         faces_parents = data['parents'] # (20908, ) 每个面对应的身体部位的父部位
         # Create the module used to filter invalid collision pairs
         ign_part_pairs = ['16,9','9,17' #,'13,16','14,17' ,'18,16','19,17'
-                          ,'15,23','15,24'] 
+                          ,'15,23','15,24',
+                          '6,17'] 
         # 9上胸；13左肩，16左上臂，18 左小臂；14右肩，17右上臂，19 右小臂
         # 12颈部，15头部，23左眼，24右眼
         filter_faces = FilterFaces(faces_parents = faces_parents,
@@ -185,7 +183,7 @@ def main():
 
     face_tensor = torch.tensor(body.faces.astype(np.int64), dtype=torch.long,
                                device=device).unsqueeze_(0).repeat([batch_size,
-                                                                    1, 1]) # (1, 20908, 3)
+                                                                    1, 1]) # (1, 20908, 3) bs是否表示同一场景下多人 or 多个物体
     with torch.no_grad():
         output = body(get_skin=True)
         verts = output.vertices
@@ -197,7 +195,6 @@ def main():
 
     optimizer = torch.optim.SGD([body.body_pose], lr=lr) # 随机梯度下降，使用其他优化器？
 
-    # pyrender渲染相关初始化
     if interactive:
         # Plot the initial mesh
         with torch.no_grad():
@@ -243,7 +240,6 @@ def main():
 
     query_names = ['recv_mesh', 'intr_mesh', 'body_mesh']
 
-    # 优化迭代
     step = 0
     while True:
         optimizer.zero_grad()
@@ -252,14 +248,14 @@ def main():
             start = time.time()
 
         if print_timings:
-            torch.cuda.synchronize()
+            torch.cuda.synchronize() # 等待之前发起的异步操作完成
         output = body(get_skin=True) # 更新当前body姿势参数？
         verts = output.vertices #  (1, 10475, 3)
 
         if print_timings:
             torch.cuda.synchronize()
             print('Body model forward: {:5f}'.format(time.time() - start))
-
+ 
         if print_timings:
             torch.cuda.synchronize()
             start = time.time()
@@ -271,7 +267,7 @@ def main():
         with torch.no_grad():
             if print_timings:
                 start = time.time()
-            collision_idxs = search_tree(triangles) # 0.01秒左右 通过BVH检测碰撞，碰撞顶点对 (1,167264,2)，为什么16万个碰撞？
+            collision_idxs = search_tree(triangles) # 通过BVH检测碰撞，碰撞顶点对 (1,167264,2)，为什么16万个碰撞？
             if print_timings:
                 torch.cuda.synchronize()
                 print('Collision Detection: {:5f}'.format(time.time() -

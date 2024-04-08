@@ -226,7 +226,7 @@ class DistanceFieldPenetrationLoss(nn.Module):
             each mesh in the batch
         '''
 
-        coll_idxs = collision_idxs[:, :, 0].ge(0).nonzero() # 有效碰撞对在collision_idxs中的索引，注意这里是二维数组，即行数为非0个数，第二维度是(bs_idx, f_idx)
+        coll_idxs = collision_idxs[:, :, 0].ge(0).nonzero(as_tuple=False) # 有效碰撞对在collision_idxs中的索引，注意这里是二维数组，即行数为非0个数，第二维度是(bs_idx, f_idx)
         if len(coll_idxs) < 1:
             return torch.zeros([triangles.shape[0]],
                                dtype=triangles.dtype,

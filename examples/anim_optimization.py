@@ -10,10 +10,11 @@ import argparse
 from smplx import create
 
 import copy
-
+import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn
+import time
 
 from collections import defaultdict
 
@@ -37,7 +38,11 @@ def main(args):
     part_segm_fn = args.part_segm_fn
     print_timings = args.print_timings
     assign_frame_idx = args.assign_frame_idx
-
+    patience = args.patience
+    loss_thres = args.loss_thres
+    output_folder = args.output_folder
+    
+    
     if interactive:
         import trimesh
         import pyrender
@@ -54,10 +59,10 @@ def main(args):
         'No key for poses parameter in provided npz file'
         
     for key, val in data.items():
-        params_dict[key].append(val)
+        params_dict[key].append(val) # dict_keys(['poses', 'trans', 'betas', 'gender', 'mocap_framerate'])
     
-    frame_num = 20# params_dict['poses'][0].shape[0]
-    if assign_frame_idx > 0:
+    frame_num = params_dict['poses'][0].shape[0]
+    if assign_frame_idx >= 0:
         frame_num = 1
         
     params = {}
@@ -72,9 +77,14 @@ def main(args):
         faces_segm = data['segm'] # (20908, ) 每个面对应的身体部位，0到54，共55个部位
         faces_parents = data['parents'] # (20908, ) 每个面对应的身体部位的父部位
         # Create the module used to filter invalid collision pairs
-        ign_part_pairs = ['16,9','9,17' #,'13,16','14,17' ,'18,16','19,17'
-                          ,'15,23','15,24','1,2'] 
-        # 9上胸；13左肩，16左上臂，18 左小臂；14右肩，17右上臂，19 右小臂
+        ign_part_pairs = ['16,9','9,17',         #,'13,16','14,17' ,'18,16','19,17'
+                          '15,23','15,24',               # 头部眼睛
+                          '1,2',                              # 大腿之间
+                          '6,17','6,16','3,16','3,17', # 中胸、肚子与上臂
+                        #   '6,17','6,16','3,16','3,17'  # 中胸、肚子与小臂
+                          ] 
+        # 9上胸，6中胸，3肚子
+        # 13左肩，16左上臂，18 左小臂；14右肩，17右上臂，19 右小臂
         # 12颈部，15头部，23左眼，24右眼
         # 1左大腿，2右大腿
         filter_faces = FilterFaces(faces_parents = faces_parents,
@@ -105,9 +115,14 @@ def main(args):
     def pen_distance_total(total_triangles, total_collision_idxs):
         pen_loss = torch.tensor(0, device=device,
                                       dtype=torch.float32)
+        coll_body_idx.clear()
         for i in range(frame_num):
-            pen_loss += pen_distance(total_triangles[i], total_collision_idxs[i])[0] # 返回是一个list（原代码可能考虑多个网格）
-        return pen_loss
+            cur_loss = pen_distance(total_triangles[i], total_collision_idxs[i])[0] # 返回是一个list（原代码可能考虑多个网格）
+            if cur_loss > 0:
+                pen_loss += cur_loss
+                coll_body_idx.append(i)
+        print(coll_body_idx)
+        return pen_loss # / frame_num
     
     mse_loss = nn.MSELoss(reduction='sum').to(device=device)
     
@@ -129,6 +144,7 @@ def main(args):
         optimizer = torch.optim.SGD([cur_body.body_pose for cur_body in total_body_mesh], lr=lr) # 随机梯度下降
     elif optim == 'Adam':
         optimizer = torch.optim.Adam([cur_body.body_pose for cur_body in total_body_mesh], lr=lr)
+                                    #  betas=(0.9, 0.999), eps=1e-8, weight_decay=0)
     
     # 显示模块初始化
     if interactive:
@@ -178,27 +194,67 @@ def main(args):
     
      # 优化迭代
     step = 0
+    loss_old = 0
+    count_loss = 0
+    coll_body_idx = [] # 有碰撞的帧
     while True:
         # START OPTIMIZATION
         optimizer.zero_grad()
         
-        # 更新当前步的body姿势参数
-        total_output_body_mesh = [cur_body(get_skin=True) for cur_body in total_body_mesh]
+        if print_timings:
+            start_step = time.time()
+            start = time.time()
+        
+        if print_timings:
+            torch.cuda.synchronize() # 等待之前发起的异步操作完成
+        
+        # 1.更新当前步的body的mesh
+        total_output_body_mesh = [cur_body(get_skin=True) for cur_body in total_body_mesh] # 耗时
+        
+        if print_timings:
+            torch.cuda.synchronize()
+            print('Body model forward: {:5f}'.format(time.time() - start))
+        
+        # 2.三角形顶点位置
+        if print_timings:
+            torch.cuda.synchronize()
+            start = time.time()
         total_verts = [cur_body_mesh.vertices for cur_body_mesh in total_output_body_mesh] #  (1, 10475, 3)
+        
+        if print_timings:
+            torch.cuda.synchronize()
+            print('Triangle indexing: {:5f}'.format(time.time() - start))
+            
         total_triangles = [verts.view([-1, 3])[faces_idx]for verts in total_verts] # triangles及三角形位置 (1, 20908, 3, 3)
         
-        # BVH碰撞检测
+        # 3.BVH碰撞检测
         with torch.no_grad():
-            total_collision_idxs = [search_tree(triangles) for triangles in total_triangles]
-            # 过滤部分身体部位or自交
+            if print_timings:
+                start = time.time()
+            total_collision_idxs = [search_tree(triangles) for triangles in total_triangles] # 耗时
+            if print_timings:
+                torch.cuda.synchronize()
+                print('Collision Detection: {:5f}'.format(time.time() - start))
+                
+            # 4. 过滤部分身体部位or自交
             if part_segm_fn:
+                if print_timings:
+                    start = time.time()
                 total_collision_idxs = [filter_faces(collision_idxs) for collision_idxs in total_collision_idxs] # 过滤部分碰撞
-        
-        # 1.穿模Loss
+                if print_timings:
+                    torch.cuda.synchronize()
+                    print('Collision filtering: {:5f}'.format(time.time() - start))
+                    
+        # 5.穿模Loss
+        if print_timings:
+            start = time.time()
         pen_loss = coll_loss_weight * \
             pen_distance_total(total_triangles, total_collision_idxs)
+        if print_timings:
+            torch.cuda.synchronize()
+            print('Penetration loss: {:5f}'.format(time.time() - start))
         
-        # 2.Pose_Reg_Loss
+        # 6.Pose_Reg_Loss
         pose_reg_loss = torch.tensor(0, device=device,
                                      dtype=torch.float32)
         
@@ -214,12 +270,27 @@ def main(args):
         if type(np_loss) != list:
             np_loss = [np_loss]
         msg = '{:.5f} ' * len(np_loss)
-        print('Loss per model:', msg.format(*np_loss))
+        print('Loss total model:', msg.format(*np_loss))
         
+        # 判断是否结束优化：若干次loss下降小于阈值
+        with torch.no_grad():
+                count_loss = count_loss + 1 if abs(loss - loss_old) < loss_thres else 0
+                if count_loss >= patience:
+                    break
+                loss_old = loss
+        
+        if print_timings:
+            start = time.time()
+        
+        # 7.反向传播    
         loss.backward(torch.ones_like(loss))
         
+        if print_timings:
+            torch.cuda.synchronize()
+            print('Backward pass: {:5f}'.format(time.time() - start))
         # END OPTIMIZATION
         assign_idx = 0
+        
         if interactive:
             with torch.no_grad():
                 output = total_body_mesh[assign_idx](get_skin=True)
@@ -273,8 +344,26 @@ def main(args):
             viewer.render_lock.release()
     
         optimizer.step()
+        if print_timings:
+            torch.cuda.synchronize() # 等待之前发起的异步操作完成
+            print('Step: {} Optimize Step Time: {:5f}'.format(step, time.time() - start_step))
         
         step += 1
+    
+    print("Optimization Finish")
+    
+    # 保存动画为npz文件
+    if output_folder:
+        body_poses = [cur_body.body_pose for cur_body in total_body_mesh]
+        for i, pose in enumerate(body_poses):
+            pose_cpu = pose.cpu()
+            pose_numpy = pose_cpu.detach().numpy().flatten().tolist()
+            params_dict['poses'][0][i][3:66] = pose_numpy
+        params_save = {}
+        # params_dict中每个value都是list
+        for key in params_dict:
+            params_save[key] = params_dict[key][0]
+        np.savez_compressed(osp.join(output_folder, 'result6.npz'), **params_save)
     
     
 if __name__=="__main__":
@@ -329,6 +418,15 @@ if __name__=="__main__":
     parser.add_argument('--print_timings', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='Print timings for all the operations')
-
+    parser.add_argument('--loss_thres', default=0.00001, type=float,
+                        help='loss change threshold during optimization process')
+    parser.add_argument('--patience', default=10, type=int,
+                        help='If the loss is too small in several changes, the optimization is terminated')
+    parser.add_argument('--output_folder', required=True, 
+                        help='folder where the example npz files are written to')
     args = parser.parse_args()
     main(args)
+    # 有点地方相交还要忽略
+    # 不考虑平滑的效果
+    # 时间有点慢
+    # 整体的平滑
