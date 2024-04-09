@@ -275,7 +275,7 @@ def main():
             if part_segm_fn:
                 if print_timings:
                     start = time.time()
-                collision_idxs = filter_faces(collision_idxs) # 过滤部分碰撞
+                collision_idxs = filter_faces(collision_idxs)[0] # 过滤部分碰撞，返回为元组（碰撞idx, 对应身体idx）
                 if print_timings:
                     torch.cuda.synchronize()
                     print('Collision filtering: {:5f}'.format(time.time() -
@@ -292,14 +292,14 @@ def main():
         shape_reg_loss = torch.tensor(0, device=device,
                                       dtype=torch.float32)
         if shape_reg_weight > 0:
-            shape_reg_loss = shape_reg_weight * torch.sum(body.betas ** 2) # 为什么直接计算平方和
+            shape_reg_loss = shape_reg_weight * torch.sum(body.betas ** 2)
         pose_reg_loss = torch.tensor(0, device=device,
                                      dtype=torch.float32)
         if pose_reg_weight > 0:
             pose_reg_loss = pose_reg_weight * \
                 mse_loss(body.pose, init_pose)
 
-        loss = pen_loss + pose_reg_loss + shape_reg_loss # 添加contact loss？
+        loss = pen_loss + pose_reg_loss + shape_reg_loss 
 
         np_loss = loss.detach().cpu().squeeze().tolist()
         if type(np_loss) != list:

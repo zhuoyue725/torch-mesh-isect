@@ -73,7 +73,7 @@ class FilterFaces(nn.Module):
             recv_segm = self.faces_segm[collision_idxs[:, :, 0]] # 碰撞pair第1个面的面索引，的对应part
             intr_segm = self.faces_segm[collision_idxs[:, :, 1]]  # 碰撞pair第2个面的面索引，的对应part
 
-            # Find the collision pairs that are on the same part 找到碰撞对是相同的身体部位为True，但是如果是手部是否同样适用？
+            # Find the collision pairs that are on the same part 找到碰撞对是相同的身体部位为True
             same_part_mask = recv_segm.eq(intr_segm).ge(1)\
                 .to(collision_idxs.dtype)
         else:
@@ -111,4 +111,7 @@ class FilterFaces(nn.Module):
             mask += (mask1 + mask2).ge(1).to(dtype=collision_idxs.dtype)
             mask = mask.ge(1).to(dtype=collision_idxs.dtype)
         
-        return mask * (-1) + (1 - mask) * collision_idxs # mask对应为1则忽略，计算为-1，0则无变化
+        result_idxs = mask * (-1) + (1 - mask) * collision_idxs
+        colls_segm = self.faces_segm[result_idxs[:, :, 0]].cpu()
+        unique_segm = torch.unique(colls_segm.squeeze(0)) # 穿模对应的身体部位
+        return  result_idxs,unique_segm# mask对应为1则忽略，计算为-1，0则无变化

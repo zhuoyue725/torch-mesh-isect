@@ -23,6 +23,8 @@
             "args": [
                 "--coll_loss_weight",
                 "0.003",
+                "--lr",
+                "0.7",
                 "--model_folder",
                 "/usr/pydata/t2m/selfcontact/model/models",
                 "--part_segm_fn", // 面索引对应的身体部位&父骨骼身体部位，用于过滤
@@ -31,7 +33,7 @@
                 "--model_type",
                 "smplx",
                 "--param_fn",
-                "/usr/pydata/t2m/selfcontact/selfcontact-essentials/example_poses/pose1.npz",
+                "/usr/pydata/t2m/selfcontact/selfcontact-essentials/example_poses/pose2.npz",
                 // "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",
                 // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hand_on_body_prior/smplx/smplx_handonbody_prior.pkl"
                 // "/usr/pydata/t2m/selfcontact/selfcontact-essentials/hd_model/smplx/smplx_neutral_hd_sample_from_mesh_out.pkl"
@@ -48,13 +50,17 @@
             "console": "integratedTerminal",
             "args": [
                 "--coll_loss_weight",
-                "0.003",
+                "0.01", // 0.005 for SGD
+                "--smooth_loss_weight",
+                "0.001",
                 // "--optim",
                 // "Adam",
-                // "--lr",
-                // "0.005", // 1 for SGD
+                "--lr",
+                " 0.7", // 0.7 for SGD 0.01 for Adam
                 // "--assign_frame_idx", // 仅优化某一帧，否则全部优化
                 // "47",
+                // "--pose_reg_weight",
+                // "0.001",
                 "--model_folder",
                 "/usr/pydata/t2m/selfcontact/model/models",
                 "--part_segm_fn", // 面索引对应的身体部位&父骨骼身体部位，用于过滤
@@ -62,13 +68,14 @@
                 "--model_type",
                 "smplx",
                 "--param_fn",
-                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/result_no_smooth_5.npz",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",  //result_no_smooth_5.npz
+                // "/usr/pydata/t2m/torch-mesh-isect/output/store/result_pen_only2.npz",
                 "--output_folder",
-                "/usr/pydata/t2m/torch-mesh-isect/output",
+                "/usr/pydata/t2m/torch-mesh-isect/output/pen",
                 "--print_timings",
-                "True",
+                "False",
                 "--interactive",
-                "False"
+                "True"
             ]
         },
         {
