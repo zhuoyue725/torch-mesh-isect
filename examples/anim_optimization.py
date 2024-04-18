@@ -51,6 +51,7 @@ def main(args):
     coll_thres = args.coll_thres
     smooth_loss_weight = args.smooth_loss_weight
     acc_thres = args.acc_thres
+    grad_thres = args.grad_thres
     
     if interactive:
         import trimesh
@@ -61,17 +62,22 @@ def main(args):
     
     # 读取身体形状beta参数
     params_dict = defaultdict(lambda: [])
-    data = np.load(param_fn[0], allow_pickle=True)
+    data = np.load(param_fn[0], allow_pickle=True) # 原代码可以读入多个文件，这里取第一个文件
     assert 'betas' in data, \
         'No key for shape parameter in provided npz file'
     assert 'poses' in data, \
         'No key for poses parameter in provided npz file'
         
     for key, val in data.items():
-        params_dict[key].append(val) # dict_keys(['poses', 'trans', 'betas', 'gender', 'mocap_framerate'])
+        params_dict[key].append(val) # dict_keys(['poses', 'trans', 'betas', 'gender', 'mocap_framerate']) # 'dmpls' (3239,8)
     
     frame_num = 60#params_dict['poses'][0].shape[0]
-    fps = params_dict['mocap_framerate'][0].item()
+    if 'mocap_frame_rate' in params_dict:
+        fps = params_dict['mocap_frame_rate'][0].item()
+    elif 'mocap_framerate' in params_dict:
+        fps = params_dict['mocap_framerate'][0].item()
+    else:
+        fps = 30
     
     if assign_frame_idx >= 0:
         frame_num = 1
@@ -108,6 +114,10 @@ def main(args):
         
     total_body_mesh = [copy.deepcopy(body) for _ in range(frame_num)] # 每帧对应一个mesh，是否可以优化
     
+    if len(params['betas'][0]) > 10:
+        model_type = 'smplh' # 参数为smplh
+        params['betas'][0] = params['betas'][0][:10] # smplh有16个形状参数，这里只取前10个
+        
     for cur_frame in range(frame_num):
         if assign_frame_idx >= 0: # 仅添加特定帧
             params['body_pose'] = params_dict['poses'][0][assign_frame_idx][3:66] # params_dict['poses']为list, 原55*3旋转，仅提取其中3:63
@@ -129,12 +139,14 @@ def main(args):
         pen_loss = torch.tensor(0, device=device,
                                       dtype=torch.float32)
         cur_coll_body_idx = []
-        for i in range(len(coll_body_idx)):
+        for i in range(len(coll_body_idx)): # 注意可能有的帧后面又有碰撞了，暂时指定帧每次都检测
             cur_loss = pen_distance(total_triangles[i], total_collision_idxs[i])[0] # 返回是一个list（原代码可能考虑多个网格）
             if cur_loss > coll_thres:
                 pen_loss += cur_loss
                 cur_coll_body_idx.append(coll_body_idx[i]) # 有碰撞的帧
         print(cur_coll_body_idx)
+        if assign_frame_idx < 0:
+            cur_coll_body_idx = range(43,50) # 每次都要检测，确保不会遗漏
         return pen_loss , cur_coll_body_idx# / frame_num
     
     def get_quat_from_rodrigues(rodrigues):
@@ -216,7 +228,8 @@ def main(args):
         smooth_loss = torch.tensor(0, device=device,
                               dtype=torch.float32)
         # for bone_idx in range(NUM_SMPLX_BODYJOINTS):
-        for bone_idx in [13,16,18,14,11]: # 右手、手臂、肩膀
+        target_bone_idx = [13,16,18,14,11]
+        for bone_idx in target_bone_idx: # 右手、手臂、肩膀
             orientation = torch.zeros((len(body_poses_total), 4),device=device, # 每个骨骼全部帧的四元数
                       dtype=torch.float32)
             for frame_index, frame_pose in enumerate(body_poses_total):
@@ -233,7 +246,7 @@ def main(args):
             # 计算选定行的平方和
             # bone_loss = torch.sum(squared_sums)
             # 计算acc张量中每个元素的平方
-            squared_sums = torch.sum(acc.pow(2), dim=1).sqrt()   # 角加速度最小化
+            squared_sums =  torch.norm(acc, dim=1)  # 角加速度最小化 torch.sum(acc.pow(2), dim=1).sqrt()
             # squared_sums = torch.sum(vel.pow(2), dim=1).sqrt() # 角速度最小化，旋转趋于静止
             # 除了该骨骼，除了该帧，其他是否有变化，其他帧有变化，其他骨骼没影响
             # 3.求前k个最大值的和
@@ -246,7 +259,7 @@ def main(args):
             # print(indices)
             smooth_loss += sum_of_top_values
         # smooth_loss /= NUM_SMPLX_BODYJOINTS
-        return smooth_loss
+        return smooth_loss / len(target_bone_idx)
         
     # 计算整个序列的角速度loss
     def calculate_smooth_loss_total_2(body_poses_total,num_frames): # 相对父节点旋转角度
@@ -424,7 +437,7 @@ def main(args):
                 if print_timings:
                     start = time.time()
                 total_collision_idxs = [filter_faces(total_collision_idxs[i])[0] for i in range(len(coll_body_idx))] # 过滤部分碰撞
-                if print_timings and assign_frame_idx >= 0 : # 调试查看穿模的部位
+                if assign_frame_idx >= 0 : # 调试查看穿模的部位
                     coll_part = filter_faces(total_collision_idxs[0])[1]
                     part_msg = ""
                     for i in range(len(coll_part)):
@@ -435,17 +448,22 @@ def main(args):
                     torch.cuda.synchronize()
                     print('Collision filtering: {:5f}'.format(time.time() - start))
                     
-        # 5.穿模Loss
+        # L1.穿模Loss
         if print_timings:
             start = time.time()
         pen_loss, coll_body_idx = pen_distance_total(total_triangles, total_collision_idxs, coll_body_idx)
-        pen_loss = coll_loss_weight * pen_loss
+
+        if coll_loss_weight > 0:
+            pen_loss = coll_loss_weight * pen_loss
+        else:
+            pen_loss = torch.tensor(0, device=device,
+                                      dtype=torch.float32)
 
         if print_timings:
             torch.cuda.synchronize()
             print('Penetration loss: {:5f}'.format(time.time() - start))
         
-        # 6.Pose_Reg_Loss
+        # L2.Pose_Reg_Loss
         pose_reg_loss = torch.tensor(0, device=device,
                                      dtype=torch.float32)
         
@@ -455,21 +473,25 @@ def main(args):
             pose_reg_loss /= len(coll_body_idx)
             pose_reg_loss = pose_reg_weight * pose_reg_loss
         
-        # 7.平滑loss
+        # L3.平滑loss
         body_poses_total = [cur_body.body_pose for cur_body in total_body_mesh] # 获取每帧的pose
         # body_poses_location_total = [cur_body.body_pose for cur_body in total_body_mesh] # 获取每帧的pose
         
-        if assign_frame_idx < 0: 
-            # smooth_loss = smooth_loss_weight * calculate_smooth_loss_total(body_poses_total)
-            loss = pose_reg_loss + pen_loss #+ smooth_loss   
-        else: # 单帧测试
-            loss = pose_reg_loss + pen_loss 
+        if assign_frame_idx < 0 and smooth_loss_weight > 0: 
+            smooth_loss = smooth_loss_weight * calculate_smooth_loss_total(body_poses_total)
+            loss = pose_reg_loss + pen_loss + smooth_loss
+        else: # 单帧测试 or 仅穿模
+            smooth_loss = torch.tensor(0, device=device, dtype=torch.float32)
+            loss = pose_reg_loss + pen_loss
         
         np_loss = loss.detach().cpu().squeeze().tolist()
         if type(np_loss) != list:
             np_loss = [np_loss]
         msg = '{:.5f} ' * len(np_loss)
-        print('Loss total model:', msg.format(*np_loss))
+        print('Loss total:', msg.format(*np_loss) ,
+                'Pen : {:5f}'.format(pen_loss), 
+                'Smooth : {:5f}'.format(smooth_loss),
+                'Reg : {:5f}'.format(pose_reg_loss))
         
         # 判断是否结束优化：若干次loss下降小于阈值
         with torch.no_grad():
@@ -484,6 +506,30 @@ def main(args):
         # 7.反向传播    
         loss.backward(torch.ones_like(loss))
         
+        topk = 6 # 仅优化梯度最大的前topk个关节
+        
+        for k in range(len(body_poses_total)): # len(body_poses_total)
+            if type(body_poses_total[k].grad) == type(None):
+                continue
+            # print('Frame: {} is croping'.format(k))
+            # non_zero_indices = body_poses_total[k].grad.reshape(-1,3).nonzero(as_tuple=False).unique()
+            grad_reshaped = body_poses_total[k].grad.reshape(-1, 3)
+            # non_zero_grads = grad_reshaped[non_zero_indices]
+            sorted_indices = torch.argsort(torch.norm(grad_reshaped,dim=1), descending=True)
+            # sorted_grads = grad_reshaped[sorted_indices]
+            top_indices = sorted_indices[:topk]
+            msg = ''
+            for i in range(len(sorted_indices)):
+                # if sorted_indices[i] not in [2,5,8,11,14,12,13,14,15,16,17,18,19,20]:
+                #     if torch.norm(grad_reshaped[sorted_indices[i]]) > 0:
+                #         msg += "{} {}; ".format(SMPLX_BODY_JOINT_NAMES[sorted_indices[i]],torch.norm(grad_reshaped[sorted_indices[i]])) # 约为0.0002左右
+                if i not in top_indices:
+                    # print(SMPLX_BODY_JOINT_NAMES[i], torch.norm(grad_reshaped[i]))
+                    # body_poses_total[0].grad[i*3:(i+1)*3] = 0 # 有问题
+                    grad_reshaped[i] = 0
+                # else:
+                #     msg += "{} {}; ".format(SMPLX_BODY_JOINT_NAMES[i],torch.norm(grad_reshaped[i])) # 大于 0.003
+            # print(msg)
         if print_timings:
             torch.cuda.synchronize()
             print('Backward pass: {:5f}'.format(time.time() - start))
@@ -561,7 +607,7 @@ def main(args):
             pose_numpy = pose_cpu.detach().numpy().flatten().tolist()
             params_dict['poses'][0][i][3:66] = pose_numpy
         if assign_frame_idx >= 0:
-            params_dict['poses'][0][assign_frame_idx-1][3:66] = body_poses[0].cpu().detach().numpy().flatten().tolist()
+            params_dict['poses'][0][assign_frame_idx][3:66] = body_poses[0].cpu().detach().numpy().flatten().tolist()
         params_save = {}
         # params_dict中每个value都是list
         for key in params_dict:
@@ -627,13 +673,15 @@ if __name__=="__main__":
     parser.add_argument('--print_timings', default=False,
                         type=lambda arg: arg.lower() in ['true', '1'],
                         help='Print timings for all the operations')
-    parser.add_argument('--loss_thres', default=0.00001, type=float,
+    parser.add_argument('--loss_thres', default=0.0001, type=float,
+                        help='loss change threshold during optimization process')
+    parser.add_argument('--grad_thres', default=0.0001, type=float,
                         help='loss change threshold during optimization process')
     parser.add_argument('--coll_thres', default=0, type=float,
                         help='Threshold of puncture, indicating collision')
     parser.add_argument('--acc_thres', default=15, type=float,
                         help='Threshold of accelerate')
-    parser.add_argument('--patience', default=10, type=int,
+    parser.add_argument('--patience', default=30, type=int,
                         help='If the loss is too small in several changes, the optimization is terminated')
     parser.add_argument('--output_folder', required=True, 
                         help='folder where the example npz files are written to')

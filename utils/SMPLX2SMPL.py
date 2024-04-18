@@ -12,7 +12,7 @@ SMPLX_BODY_JOINT_NAMES = [ # SMPLX的21个身体关节θ(去除第一个pelvis)
     # "pelvis",
     "left_hip",
     "right_hip", # 1
-    "spine1",
+    "spine1", # 2
     "left_knee",
     "right_knee", # 4
     "spine2",
@@ -37,3 +37,61 @@ SMPLX_BODY_JOINT_NAMES = [ # SMPLX的21个身体关节θ(去除第一个pelvis)
 # 13左肩，16左上臂，18 左小臂；14右肩，17右上臂，19 右小臂
 # 12颈部，15头部，23左眼，24右眼
 # 1左大腿，2右大腿
+
+# 21+1个关节对应smplx的名称映射
+JOINT_MAP_22 = {
+    # 'BVH joint name': 'SMPLX joint index'
+    'Hips': 0,
+    'LeftUpLeg': 1,
+    'RightUpLeg': 2,
+    'Spine': 3,
+    'LeftLeg': 4,
+    'RightLeg': 5,
+    'Spine1': 6,
+    'LeftFoot': 7,
+    'RightFoot': 8,
+    'Spine2': 9,
+    'LeftToe': 10,
+    'RightToe': 11,
+    'Neck': 12,
+    'LeftShoulder': 13,
+    'RightShoulder': 14,
+    'Head': 15,
+    'LeftArm': 16,
+    'RightArm': 17,
+    'LeftForeArm': 18,
+    'RightForeArm': 19,
+    'LeftHand': 20,
+    'RightHand': 21,
+    # 没有30个手指关节
+    # 'LeftHandIndex1': 25,
+    # 'LeftHandIndex2': 26,
+    # 'LeftHandIndex3': 27,
+    # 'LeftHandMiddle1': 28,
+    # 'LeftHandMiddle2': 29,
+    # 'LeftHandMiddle3': 30,
+    # 'LeftHandPinky1': 31,
+    # 'LeftHandPinky2': 32,
+    # 'LeftHandPinky3': 33,
+    # 'LeftHandRing1': 34,
+    # 'LeftHandRing2': 35,
+    # 'LeftHandRing3': 36,
+    # 'LeftHandThumb1': 37,
+    # 'LeftHandThumb2': 38,
+    # 'LeftHandThumb3': 39,
+    # 'RightHandIndex1': 40,
+    # 'RightHandIndex2': 41,
+    # 'RightHandIndex3': 42,
+    # 'RightHandMiddle1': 43,
+    # 'RightHandMiddle2': 44,
+    # 'RightHandMiddle3': 45,
+    # 'RightHandPinky1': 46,
+    # 'RightHandPinky2': 47,
+    # 'RightHandPinky3': 48,
+    # 'RightHandRing1': 49,
+    # 'RightHandRing2': 50,
+    # 'RightHandRing3': 51,
+    # 'RightHandThumb1': 52,
+    # 'RightHandThumb2': 53,
+    # 'RightHandThumb3': 54,
+}

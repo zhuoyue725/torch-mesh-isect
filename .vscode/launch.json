@@ -50,15 +50,15 @@
             "console": "integratedTerminal",
             "args": [
                 "--coll_loss_weight",
-                "0.01", // 0.005 for SGD
+                "0.008", // 0.005 for SGD 0.008 for Adam
                 "--smooth_loss_weight",
-                "0.001",
-                // "--optim",
-                // "Adam",
+                "0.0005", // 0.001 0.0005
+                "--optim",
+                "Adam",
                 "--lr",
-                " 0.7", // 0.7 for SGD 0.01 for Adam
+                "0.01", // 0.7 for SGD 0.01 for Adam
                 // "--assign_frame_idx", // 仅优化某一帧，否则全部优化
-                // "47",
+                // "0", // blender对应此处+1帧
                 // "--pose_reg_weight",
                 // "0.001",
                 "--model_folder",
@@ -68,15 +68,17 @@
                 "--model_type",
                 "smplx",
                 "--param_fn",
-                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",  //result_no_smooth_5.npz
-                // "/usr/pydata/t2m/torch-mesh-isect/output/store/result_pen_only2.npz",
+                // "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/bvh2npz/walk circle.npz",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/recon_000_30fps.npz",
+                // "/usr/pydata/t2m/torch-mesh-isect/output/store/result_pen_only5.npz",
                 "--output_folder",
-                "/usr/pydata/t2m/torch-mesh-isect/output/pen",
+                "/usr/pydata/t2m/torch-mesh-isect/output/pen_and_smooth",
                 "--print_timings",
                 "False",
                 "--interactive",
-                "True"
-            ]
+                "False"
+            ],
+            // "justMyCode": false
         },
         {
             "name": "Read fbx File",
@@ -96,6 +98,27 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "CUDA C++: Launch",
+            "type": "cuda-gdb",
+            "request": "launch",
+            "program": "${fileDirname}/test/testcu.cu",
+            "preLaunchTask": "mynvcc"
+        },
+        {
+            "name": "BVH 2 SMPLX",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/utils/bvh2smplx.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/usr/pydata/t2m/torch-mesh-isect/assets/bvh_file/jump rope.bvh",
+                // "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/bvh2npz/kick jabs.npz"
+                // "/usr/pydata/t2m/torch-mesh-isect/assets/bvh_file",
+                "/usr/pydata/t2m/torch-mesh-isect/assets/npz_file/bvh2npz"
             ],
             "justMyCode": false
         }
